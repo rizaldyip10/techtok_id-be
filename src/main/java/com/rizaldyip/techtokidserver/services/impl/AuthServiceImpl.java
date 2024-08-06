@@ -119,6 +119,9 @@ public class AuthServiceImpl implements AuthService {
         if (isUserExist.isEmpty()) {
             throw new DataNotFoundExceptions("User not found");
         }
+        if (!isUserExist.get().isVerified()) {
+            throw new ApplicationException(HttpStatus.FORBIDDEN, "User is not verified");
+        }
 
         log.info("Login request received for user: {}", loginReqDto.getEmail());
         Authentication authentication = authenticationManager
