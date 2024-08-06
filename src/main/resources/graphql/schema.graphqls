@@ -1,0 +1,45 @@
+type Query {
+    profile: User
+}
+
+type Mutation {
+    # User Auth
+    signUp(input: SignUpInput): AuthPayload
+    signIn(input: SignInInput): AuthPayload
+    confirmEmail: AuthPayload
+    resetPasswordRequest(email: String!): AuthPayload
+    resetPassword(password: String!): AuthPayload
+}
+
+
+type User {
+    id: ID!
+    name: String!
+    email: String!
+    profileImg: String
+    roles: [Role!]!
+    phone: Int
+}
+
+type Role {
+    id: ID!
+    name: String!
+}
+
+type AuthPayload {
+    token: String
+    message: String!
+}
+
+input SignUpInput {
+    name: String!
+    email: String!
+    password: String!
+    roleId: ID!
+}
+
+input SignInInput {
+    email: String!
+    password: String!
+}
+scalar Instant
