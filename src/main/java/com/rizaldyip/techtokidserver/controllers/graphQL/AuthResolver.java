@@ -63,7 +63,7 @@ public class AuthResolver {
     }
 
     @MutationMapping(value = "addAdmin")
-    @PreAuthorize("hasAuthority('SCOPE_ROLE_ADMIN')")
+    @PreAuthorize("hasAuthority('SCOPE_ROLE_SUPER_ADMIN')")
     public AuthPayloadDto addAdmin(@Argument String email) throws MessagingException, IOException {
         return authService.addAdmin(email);
     }

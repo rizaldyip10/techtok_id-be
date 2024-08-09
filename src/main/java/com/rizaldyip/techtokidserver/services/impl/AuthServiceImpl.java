@@ -336,11 +336,12 @@ public class AuthServiceImpl implements AuthService {
         String profilePicture = "https://ui-avatars.com/api/?name=" +
                 reqDto.getName().replace(" ", "+") +
                 "&background=ff782c&color=fff";
+        var password = passwordEncoder.encode(reqDto.getPassword());
 
         User newAdmin = new User();
         newAdmin.setEmail(email);
         newAdmin.setName(reqDto.getName());
-        newAdmin.setPassword(reqDto.getPassword());
+        newAdmin.setPassword(password);
         newAdmin.setVerified(true);
         newAdmin.setRoles(List.of(role));
         newAdmin.setProfileImg(profilePicture);
