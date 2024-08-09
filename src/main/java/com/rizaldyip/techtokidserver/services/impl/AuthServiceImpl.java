@@ -1,8 +1,10 @@
 package com.rizaldyip.techtokidserver.services.impl;
 
+import com.rizaldyip.techtokidserver.dtos.request.AdminOnboardReqDto;
 import com.rizaldyip.techtokidserver.dtos.request.LoginReqDto;
 import com.rizaldyip.techtokidserver.dtos.request.RegisterReqDto;
 import com.rizaldyip.techtokidserver.dtos.response.AuthPayloadDto;
+import com.rizaldyip.techtokidserver.dtos.response.UserResDto;
 import com.rizaldyip.techtokidserver.entities.User;
 import com.rizaldyip.techtokidserver.entities.UserAuth;
 import com.rizaldyip.techtokidserver.exceptions.ApplicationException;
@@ -101,8 +103,6 @@ public class AuthServiceImpl implements AuthService {
                 .expiresAt(now.plus(expiration, ChronoUnit.HOURS))
                 .subject(user.getEmail())
                 .claim("userId", user.getId())
-                .claim("email", user.getEmail())
-                .claim("purpose", "reset_password")
                 .build();
 
         var jwt = jwtEncoder.encode(JwtEncoderParameters.from(claims))
@@ -113,14 +113,34 @@ public class AuthServiceImpl implements AuthService {
     }
 
     @Override
-    public AuthPayloadDto signIn(LoginReqDto loginReqDto) {
+    public String generateTokenWOAuth(String email, int expiration, String keyPrefix) {
+        Instant now = Instant.now();
 
+        JwtClaimsSet claims = JwtClaimsSet.builder()
+                .issuer("self")
+                .issuedAt(now)
+                .expiresAt(now.plus(expiration, ChronoUnit.HOURS))
+                .subject(email)
+                .build();
+
+        var jwt = jwtEncoder.encode(JwtEncoderParameters.from(claims))
+                .getTokenValue();
+
+        authRedisRepository.saveJWTKey(email, jwt, keyPrefix, expiration);
+        return jwt;
+    }
+
+    @Override
+    public AuthPayloadDto userSignIn(LoginReqDto loginReqDto) {
         Optional<User> isUserExist = userRepository.findByEmail(loginReqDto.getEmail());
         if (isUserExist.isEmpty()) {
             throw new DataNotFoundExceptions("User not found");
         }
         if (!isUserExist.get().isVerified()) {
             throw new ApplicationException(HttpStatus.FORBIDDEN, "User is not verified");
+        }
+        if (isUserExist.get().getRoles().getFirst().getId() == 2) {
+            throw new ApplicationException(HttpStatus.FORBIDDEN, "Only role user can access");
         }
 
         log.info("Login request received for user: {}", loginReqDto.getEmail());
@@ -134,6 +154,38 @@ public class AuthServiceImpl implements AuthService {
         log.info("Principal user: {}", userDetails.getUsername());
         log.info("Token requested for user: {} with role {}", userDetails.getUsername(), userDetails.getAuthorities().toArray()[0]);
         String token = generateToken(authentication, 3, "techtokidserver:jwt:string");
+
+        AuthPayloadDto resDto = new AuthPayloadDto();
+        resDto.setMessage("Login success");
+        resDto.setToken(token);
+
+        return resDto;
+    }
+
+    @Override
+    public AuthPayloadDto adminSignIn(LoginReqDto loginReqDto) {
+        Optional<User> isUserExist = userRepository.findByEmail(loginReqDto.getEmail());
+        if (isUserExist.isEmpty()) {
+            throw new DataNotFoundExceptions("User not found");
+        }
+        if (!isUserExist.get().isVerified()) {
+            throw new ApplicationException(HttpStatus.FORBIDDEN, "User is not verified");
+        }
+        if (isUserExist.get().getRoles().getFirst().getId() == 1) {
+            throw new ApplicationException(HttpStatus.FORBIDDEN, "Only role admin can access");
+        }
+
+        log.info("Login request received for user: {}", loginReqDto.getEmail());
+        Authentication authentication = authenticationManager
+                .authenticate(new UsernamePasswordAuthenticationToken(loginReqDto.getEmail(), loginReqDto.getPassword()));
+        SecurityContextHolder.getContext().setAuthentication(authentication);
+
+        UserAuth userDetails = (UserAuth) authentication.getPrincipal();
+
+
+        log.info("Principal user: {}", userDetails.getUsername());
+        log.info("Token requested for user: {} with role {}", userDetails.getUsername(), userDetails.getAuthorities().toArray()[0]);
+        String token = generateToken(authentication, 6, "techtokidserver:jwt:string");
 
         AuthPayloadDto resDto = new AuthPayloadDto();
         resDto.setMessage("Login success");
@@ -245,5 +297,56 @@ public class AuthServiceImpl implements AuthService {
         response.setMessage("Reset password success");
 
         return response;
+    }
+
+    @Override
+    public AuthPayloadDto addAdmin(String email) throws MessagingException, IOException {
+        Optional<User> isEmailExist = userRepository.findByEmail(email);
+        if (isEmailExist.isPresent()) {
+            throw new ApplicationException("Email already exists");
+        }
+
+        var token = generateTokenWOAuth(email, 12, "techtokid:newadmin:string");
+
+        String htmlPath = "C:/Users/idyog/OneDrive/Documents/techtok.id_revamp/server/techtokIdServer/src/main/resources/email-template/new-admin.html";
+        emailService.sendEmail(email, token, htmlPath);
+
+        var response = new AuthPayloadDto();
+        response.setMessage("Please check your email to complete your admin profile");
+        response.setToken(token);
+
+        return response;
+    }
+
+    @Override
+    @Transactional
+    public UserResDto adminOnboarding(String email, AdminOnboardReqDto reqDto) {
+        log.info("user email -> {}", email);
+        Optional<User> isUserExist = userRepository.findByEmail(email);
+        if (isUserExist.isPresent()) {
+            throw new ApplicationException("Email already exists");
+        }
+
+        var isKeyExist = authRedisRepository.getJWTKey(email, "techtokid:newadmin:string");
+        if (isKeyExist == null) {
+            throw new ApplicationException(HttpStatus.FORBIDDEN, "You already completed your profile or time has expired");
+        }
+
+        var role = roleService.getRole(reqDto.getRoleId());
+        String profilePicture = "https://ui-avatars.com/api/?name=" +
+                reqDto.getName().replace(" ", "+") +
+                "&background=ff782c&color=fff";
+
+        User newAdmin = new User();
+        newAdmin.setEmail(email);
+        newAdmin.setName(reqDto.getName());
+        newAdmin.setPassword(reqDto.getPassword());
+        newAdmin.setVerified(true);
+        newAdmin.setRoles(List.of(role));
+        newAdmin.setProfileImg(profilePicture);
+
+        authRedisRepository.deleteJWTKey(email, "techtokid:newadmin:string");
+
+        return userRepository.save(newAdmin).toUserResDto();
     }
 }

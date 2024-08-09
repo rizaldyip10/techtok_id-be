@@ -5,10 +5,15 @@ type Query {
 type Mutation {
     # User Auth
     signUp(input: SignUpInput): AuthPayload
-    signIn(input: SignInInput): AuthPayload
+    userSignIn(input: SignInInput): AuthPayload
+    adminSignIn(input: SignInInput): AuthPayload
     confirmEmail: AuthPayload
     resetPasswordRequest(email: String!): AuthPayload
     resetPassword(password: String!): AuthPayload
+
+    #Admin Auth
+    addAdmin(email: String!): AuthPayload
+    adminOnboarding(input: AdminOnboardingInput): User
 }
 
 
@@ -41,5 +46,11 @@ input SignUpInput {
 input SignInInput {
     email: String!
     password: String!
+}
+
+input AdminOnboardingInput {
+    name: String!
+    password: String!
+    roleId: ID!
 }
 scalar Instant
